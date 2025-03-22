@@ -12,6 +12,7 @@ function randomDelay(min, max) {
 }
 
 async function dismissPopups(page) {
+    // Using the updated syntax with "xpath/" prefix
     const notNowButtons = await page.$$("xpath/.//button[contains(text(), 'Not now')]");
     if (notNowButtons.length) {
         for (const btn of notNowButtons) {
@@ -22,7 +23,7 @@ async function dismissPopups(page) {
 }
 
 async function simulateHumanInteraction(page) {
-    // Scroll down a bit then up to simulate reading.
+    // Scroll down then up to simulate reading.
     await page.evaluate(() => window.scrollBy(0, Math.floor(Math.random() * 300) + 50));
     await randomDelay(1000, 2000);
     await page.evaluate(() => window.scrollBy(0, -Math.floor(Math.random() * 150)));
@@ -37,52 +38,52 @@ async function simulateHumanInteraction(page) {
 
 module.exports = async function getFollowing() {
     let followings = [];
-    const browser = await puppeteer.launch({ headless: false, defaultViewport: null});
-    const mainPage = await browser.newPage();
+    const browser = await puppeteer.launch({ headless: false, defaultViewport: null });
+    const page = await browser.newPage();
 
     try {
-        await mainPage.setViewport({
-            width: 1728,
-            height: 1117,
-        });
-        await mainPage.goto('https://www.instagram.com/accounts/login/');
-        await mainPage.waitForSelector('input[name="username"]', { visible: true });
+        await page.setViewport({ width: 1728, height: 1117 });
+        await page.goto('https://www.instagram.com/accounts/login/');
+        await page.waitForSelector('input[name="username"]', { visible: true });
         await randomDelay(1000, 1500);
-        await mainPage.type('input[name="username"]', process.env.MAIN_USERNAME, { delay: 100 });
+        await page.type('input[name="username"]', process.env.MAIN_USERNAME, { delay: 100 });
         await randomDelay(500, 1000);
-        await mainPage.type('input[name="password"]', process.env.MAIN_PASSWORD, { delay: 100 });
+        await page.type('input[name="password"]', process.env.MAIN_PASSWORD, { delay: 100 });
         await randomDelay(500, 1000);
-        await mainPage.click('button[type="submit"]');
-        await mainPage.waitForNavigation({ timeout: 15000 }).catch(e => console.error("Navigation timeout during login:", e));
+        await page.click('button[type="submit"]');
+        await page.waitForNavigation({ timeout: 15000 }).catch(e => console.error("Navigation timeout during login:", e));
         await randomDelay(2000, 3000);
-        await dismissPopups(mainPage);
+        await dismissPopups(page);
 
-        // Navigate to the "following" list (opens in a modal)
+        // Navigate to the profile and then open the following modal
         const profileUrl = `https://www.instagram.com/${process.env.MAIN_USERNAME}/`;
-        await mainPage.goto(profileUrl);
+        await page.goto(profileUrl);
         await randomDelay(2000, 3000);
-        await mainPage.goto(`${profileUrl}following/`);
+        const [element] = await page.$$("xpath/.//section//main//header//ul//li//a[span]//span[contains(text(), 'following')]");
+        await element?.click();
+        // await page.goto(`${profileUrl}following/`);
 
-        // Wait for the modal container
-        const modalSelector = 'html > body > div:nth-of-type(4) > div:nth-of-type(2) > div > div > div:nth-of-type(1) > div > div:nth-of-type(2) > div > div > div > div > div:nth-of-type(2) > div > div > div:nth-of-type(3) > div:nth-of-type(1) > div > div:nth-of-type(1) > div > div > div > div:nth-of-type(2) > div > div > div > div > span > div > a > div > div > span';
-        await mainPage.waitForSelector(modalSelector, { visible: true, timeout: 10000 });
+        // Wait for the modal container.
+        // From the provided HTML, the scrollable container seems to be the div with style containing "overflow: hidden auto"
+        const modalSelector = "xpath/.//div[@role='dialog']//div[contains(@style, 'overflow: hidden auto')]";
+        await page.waitForSelector(modalSelector, { visible: true, timeout: 10000 });
         await randomDelay(2000, 3000);
 
-        // Scroll the modal to load all followings
+        // Scroll the modal until all followings are loaded.
         let previousHeight = 0;
         try {
             while (true) {
-                previousHeight = await mainPage.evaluate(selector => {
-                    const el = document.querySelector(selector);
+                previousHeight = await page.evaluate(selector => {
+                    const el = document.evaluate(selector, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
                     return el ? el.scrollHeight : 0;
                 }, modalSelector);
-                await mainPage.evaluate(selector => {
-                    const el = document.querySelector(selector);
+                await page.evaluate(selector => {
+                    const el = document.evaluate(selector, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
                     if (el) el.scrollTo(0, el.scrollHeight);
                 }, modalSelector);
                 await randomDelay(1500, 2500);
-                const newHeight = await mainPage.evaluate(selector => {
-                    const el = document.querySelector(selector);
+                const newHeight = await page.evaluate(selector => {
+                    const el = document.evaluate(selector, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
                     return el ? el.scrollHeight : 0;
                 }, modalSelector);
                 if (newHeight === previousHeight) break;
@@ -91,14 +92,14 @@ module.exports = async function getFollowing() {
             console.error('Error during modal scrolling:', e);
         }
 
-        // Extract usernames; adjust selector if Instagram changes its DOM
-        followings = await mainPage.evaluate(() => {
-            const elements = document.querySelectorAll('a.FPmhX');
+        // Extract usernames using updated selectors (based on the provided HTML)
+        followings = await page.evaluate(() => {
+            const elements = document.querySelectorAll('a.notranslate._a6hd');
             return Array.from(elements).map(el => el.textContent);
         });
         console.log('Extracted Followings:', followings);
 
-        // Save the followings list to followings.json in the project root.
+        // Save the followings list to followings.json.
         fs.writeFileSync(path.join(__dirname, 'followings.json'), JSON.stringify(followings, null, 2));
         console.log('Followings saved to followings.json');
     } catch (e) {

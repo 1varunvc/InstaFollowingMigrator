@@ -11,7 +11,7 @@ function randomDelay(min, max) {
 }
 
 async function dismissPopups(page) {
-    const notNowButtons = await page.$$("//button[contains(text(), 'Not Now')]");
+    const notNowButtons = await page.$$("xpath/.//button[contains(text(), 'Not Now')]");
     if (notNowButtons.length) {
         for (const btn of notNowButtons) {
             await btn.click();

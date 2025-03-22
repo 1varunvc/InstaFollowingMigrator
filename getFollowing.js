@@ -4,15 +4,14 @@ const puppeteer = require('puppeteer');
 const fs = require('fs');
 const path = require('path');
 
-// Utility: random delay in milliseconds
 function randomDelay(min, max) {
+    console.log("Random Delay");
     return new Promise(resolve =>
         setTimeout(resolve, Math.floor(Math.random() * (max - min + 1)) + min)
     );
 }
 
 async function dismissPopups(page) {
-    // Using the updated syntax with "xpath/" prefix
     const notNowButtons = await page.$$("xpath/.//button[contains(text(), 'Not now')]");
     if (notNowButtons.length) {
         for (const btn of notNowButtons) {
@@ -23,13 +22,13 @@ async function dismissPopups(page) {
 }
 
 async function simulateHumanInteraction(page) {
-    // Scroll down then up to simulate reading.
+    console.log("Scroll down then up to simulate reading.");
     await page.evaluate(() => window.scrollBy(0, Math.floor(Math.random() * 300) + 50));
     await randomDelay(1000, 2000);
     await page.evaluate(() => window.scrollBy(0, -Math.floor(Math.random() * 150)));
     await randomDelay(1000, 2000);
 
-    // Additional random mouse movement.
+    console.log("Additional random mouse movement.");
     const randomX = Math.floor(Math.random() * 600) + 50;
     const randomY = Math.floor(Math.random() * 600) + 50;
     await page.mouse.move(randomX, randomY, { steps: 20 });
@@ -55,51 +54,64 @@ module.exports = async function getFollowing() {
         await randomDelay(2000, 3000);
         await dismissPopups(page);
 
-        // Navigate to the profile and then open the following modal
+        console.log("Navigate to the profile page and open the following modal");
         const profileUrl = `https://www.instagram.com/${process.env.MAIN_USERNAME}/`;
         await page.goto(profileUrl);
         await randomDelay(2000, 3000);
-        const [element] = await page.$$("xpath/.//section//main//header//ul//li//a[span]//span[contains(text(), 'following')]");
-        await element?.click();
-        // await page.goto(`${profileUrl}following/`);
 
-        // Wait for the modal container.
-        // From the provided HTML, the scrollable container seems to be the div with style containing "overflow: hidden auto"
-        const modalSelector = "xpath/.//div[@role='dialog']//div[contains(@style, 'overflow: hidden auto')]";
+        console.log("Click on the 'following' button – using a case-insensitive search");
+        const [followingButton] = await page.$$("xpath/.//section//main//header//ul//li//a[span]//span[contains(translate(text(), 'ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'abcdefghijklmnopqrstuvwxyz'), 'following')]");
+        await followingButton?.click();
+
+        console.log("Wait for the modal container.");
+        console.log("Use a CSS selector to look for a div inside the dialog that contains a 'max-height' style.");
+        const modalSelector = 'div[role="dialog"] div[style*="max-height"]';
         await page.waitForSelector(modalSelector, { visible: true, timeout: 10000 });
         await randomDelay(2000, 3000);
 
-        // Scroll the modal until all followings are loaded.
-        let previousHeight = 0;
+        console.log("Scroll the modal until all followings are loaded.");
+        let previousHeight;
         try {
             while (true) {
+                console.log("Get current scroll height of the modal");
                 previousHeight = await page.evaluate(selector => {
-                    const el = document.evaluate(selector, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
-                    return el ? el.scrollHeight : 0;
+                    const modal = document.querySelector(selector);
+                    return modal ? modal.scrollHeight : 0;
                 }, modalSelector);
+
+                console.log("Scroll down by 300px in the modal");
                 await page.evaluate(selector => {
-                    const el = document.evaluate(selector, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
-                    if (el) el.scrollTo(0, el.scrollHeight);
+                    const modal = document.querySelector(selector);
+                    if (modal) {
+                        modal.scrollBy(0, 100000);
+                    }
                 }, modalSelector);
-                await randomDelay(1500, 2500);
+
+                console.log("Wait for new items to load");
+                await randomDelay(5000, 10000);
+
+                console.log("Get new scroll height");
                 const newHeight = await page.evaluate(selector => {
-                    const el = document.evaluate(selector, document, null, XPathResult.FIRST_ORDERED_NODE_TYPE, null).singleNodeValue;
-                    return el ? el.scrollHeight : 0;
+                    const modal = document.querySelector(selector);
+                    return modal ? modal.scrollHeight : 0;
                 }, modalSelector);
+
+                console.log("If the scroll height hasn't increased, assume we reached the end");
                 if (newHeight === previousHeight) break;
             }
         } catch (e) {
             console.error('Error during modal scrolling:', e);
         }
 
-        // Extract usernames using updated selectors (based on the provided HTML)
+        console.log("Extract usernames using updated selectors.");
         followings = await page.evaluate(() => {
+            console.log("Instagram followings are rendered as <a> elements with specific classes.");
             const elements = document.querySelectorAll('a.notranslate._a6hd');
-            return Array.from(elements).map(el => el.textContent);
+            return Array.from(elements).map(el => el.textContent.trim());
         });
         console.log('Extracted Followings:', followings);
 
-        // Save the followings list to followings.json.
+        console.log("Save the followings list to followings.json.");
         fs.writeFileSync(path.join(__dirname, 'followings.json'), JSON.stringify(followings, null, 2));
         console.log('Followings saved to followings.json');
     } catch (e) {

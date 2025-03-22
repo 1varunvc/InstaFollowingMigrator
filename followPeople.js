@@ -43,7 +43,7 @@ async function simulateHumanInteraction(page) {
 module.exports = async function followPeople() {
     let followings = [];
     try {
-        // Read the saved followings list
+        console.log("Read the saved followings list");
         const data = fs.readFileSync(path.join(__dirname, 'followings.json'), 'utf-8');
         followings = JSON.parse(data);
     } catch (e) {
@@ -51,7 +51,7 @@ module.exports = async function followPeople() {
         return;
     }
 
-    // Parse the SKIP_NAMES from the .env file (comma-separated)
+    console.log("Parse the SKIP_NAMES from the .env file (comma-separated)");
     const skipNames = process.env.SKIP_NAMES ? process.env.SKIP_NAMES.split(',').map(name => name.trim()) : [];
     const accountsToFollow = followings.filter(name => !skipNames.includes(name));
     console.log('Accounts to follow:', accountsToFollow);
@@ -73,7 +73,7 @@ module.exports = async function followPeople() {
 
         let index = 0;
         while (index < accountsToFollow.length) {
-            // Randomize batch size between 18 and 22 accounts per batch
+            console.log("Randomize batch size between 18 and 22 accounts per batch");
             const batchSize = Math.floor(Math.random() * 5) + 18;
             const batch = accountsToFollow.slice(index, index + batchSize);
 
